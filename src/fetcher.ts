@@ -1,16 +1,24 @@
 import { lookup } from "node:dns/promises";
+import { createRequire } from "node:module";
 import { isIP } from "node:net";
 import * as cheerio from "cheerio";
-import robotsParser from "robots-parser";
 import { config } from "./config.js";
 import type { PageDocument } from "./types.js";
 
-const robotsCache = new Map<string, ReturnType<typeof robotsParser>>();
+type RobotsPolicy = {
+  isAllowed: (url: string, userAgent: string) => boolean | undefined;
+};
+
+const require = createRequire(import.meta.url);
+const robotsParser = require("robots-parser") as (url: string, robotsText: string) => RobotsPolicy;
+const robotsCache = new Map<string, RobotsPolicy>();
 
 function ipv4Private(address: string): boolean {
   const octets = address.split(".").map(Number);
   if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n))) return true;
-  const [a, b] = octets;
+  const a = octets[0];
+  const b = octets[1];
+  if (a === undefined || b === undefined) return true;
   return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
     (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
@@ -34,7 +42,9 @@ async function isPublicHost(hostname: string): Promise<boolean> {
   if (literalType === 6) return !ipv6Private(lower);
   try {
     const addresses = await lookup(lower, { all: true, verbatim: true });
-    return addresses.length > 0 && addresses.every(({ address }) => isIP(address) === 4 ? !ipv4Private(address) : !ipv6Private(address));
+    return addresses.length > 0 && addresses.every(({ address }) =>
+      isIP(address) === 4 ? !ipv4Private(address) : !ipv6Private(address)
+    );
   } catch {
     return false;
   }
@@ -64,7 +74,7 @@ async function allowedByRobots(url: string): Promise<boolean> {
 export async function fetchPublicPage(url: string): Promise<PageDocument | null> {
   let parsed: URL;
   try { parsed = new URL(url); } catch { return null; }
-  if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  if (!["http:", "https:"].includes(parsed.protocol)) return null;
   if (!(await isPublicHost(parsed.hostname))) return null;
   if (!(await allowedByRobots(url))) return null;
 
