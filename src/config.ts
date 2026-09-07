@@ -8,6 +8,8 @@ const schema = z.object({
   MAX_RESULTS: z.coerce.number().int().min(1).max(50).default(10),
   FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
   MAX_PAGE_BYTES: z.coerce.number().int().min(10000).max(10000000).default(2000000),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(30),
+  RATE_LIMIT_WINDOW: z.string().default("1 minute"),
   USER_AGENT: z.string().default("DeepSearchPublic/0.1")
 });
 
