@@ -11,9 +11,10 @@
     "ALLOWED_ORIGIN": "https://camoosk.github.io",
     "SEARCH_PROVIDER": "searxng",
     "SEARXNG_URL": "https://searx.tiekoetter.com",
+    "SEARXNG_FALLBACK_URLS": "https://searxng.website,https://search.pereira.is,https://searxng.site",
     "MAX_RESULTS": "10",
     "MAX_PAGE_BYTES": "150000",
     "FETCH_TIMEOUT_MS": "8000",
-    "USER_AGENT": "DeepSearchPublic/0.3 (+https://github.com/camoosk/deepsearch-public)"
+    "USER_AGENT": "DeepSearchPublic/0.4 (+https://github.com/camoosk/deepsearch-public)"
   }
 }
