@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import { config } from "./config.js";
 import { fetchPublicPage } from "./fetcher.js";
@@ -8,6 +9,14 @@ import { deepSearch } from "./search/engine.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
+await app.register(rateLimit, {
+  max: config.RATE_LIMIT_MAX,
+  timeWindow: config.RATE_LIMIT_WINDOW,
+  errorResponseBuilder: (_request, context) => ({
+    error: "Rate limit exceeded",
+    retryAfterSeconds: Math.ceil(context.ttl / 1000)
+  })
+});
 
 const searchSchema = z.object({
   query: z.string().trim().min(1).max(500),
@@ -15,7 +24,12 @@ const searchSchema = z.object({
 });
 const inspectSchema = z.object({ url: z.string().url().max(2048) });
 
-app.get("/health", async () => ({ status: "ok", service: "deepsearch-public", version: "0.1.0" }));
+app.get("/health", async () => ({
+  status: "ok",
+  service: "deepsearch-public",
+  version: "0.1.0",
+  provider: config.SEARCH_PROVIDER
+}));
 
 app.post("/api/search", async (request, reply) => {
   const parsed = searchSchema.safeParse(request.body);
@@ -54,6 +68,7 @@ app.post("/api/inspect", async (request, reply) => {
 });
 
 app.setErrorHandler((error, _request, reply) => {
+  if (error.statusCode === 429) return reply.code(429).send({ error: "Rate limit exceeded" });
   reply.code(500).send({ error: error instanceof Error ? error.message : "Internal server error" });
 });
 
