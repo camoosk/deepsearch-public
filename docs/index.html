@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#08111f" />
+  <title>DeepSearch Public</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./">DeepSearch <span>Public</span></a>
+    <div class="status"><span class="dot"></span><span id="modeLabel">Browser demo</span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="eyebrow">PUBLIC WEB RESEARCH</div>
+      <h1>Search deeper.<br><span>Keep the evidence.</span></h1>
+      <p>Privacy-aware research interface for discovering, correlating and verifying publicly available information.</p>
+
+      <form id="searchForm" class="searchbox">
+        <input id="query" maxlength="500" autocomplete="off" placeholder="What do you want to investigate?" aria-label="Search query" />
+        <button type="submit">Search</button>
+      </form>
+      <div class="examples">
+        <button data-q="open source intelligence tools">OSINT tools</button>
+        <button data-q="web privacy research">Web privacy</button>
+        <button data-q="public data verification">Source verification</button>
+      </div>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <aside class="panel plan">
+        <div class="panel-title">Research plan</div>
+        <div id="queries" class="query-list"></div>
+      </aside>
+
+      <section class="panel results-panel">
+        <div class="results-head">
+          <div><div class="panel-title">Evidence</div><h2 id="resultTitle">Results</h2></div>
+          <div id="resultCount" class="count"></div>
+        </div>
+        <div id="notice" class="notice"></div>
+        <div id="results" class="results"></div>
+      </section>
+    </section>
+
+    <section class="principles">
+      <article><b>01</b><h3>Public by design</h3><p>Designed around information intentionally available on the public web.</p></article>
+      <article><b>02</b><h3>Evidence first</h3><p>Results retain source URLs, domains and relevance signals instead of hiding provenance.</p></article>
+      <article><b>03</b><h3>Backend ready</h3><p>The static demo can connect to the DeepSearch API when a backend endpoint is deployed.</p></article>
+    </section>
+  </main>
+
+  <footer>DeepSearch Public · Open source · MIT</footer>
+  <script src="./app.js"></script>
+</body>
+</html>
