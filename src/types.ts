@@ -42,6 +42,6 @@ export interface SearchRun {
   startedAt: string;
   finishedAt: string;
   provider?: string;
-  providerInstance?: string;
-  providerErrors?: string[];
+  providerInstance?: string | undefined;
+  providerErrors?: string[] | undefined;
 }
