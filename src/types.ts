@@ -41,4 +41,7 @@ export interface SearchRun {
   results: Evidence[];
   startedAt: string;
   finishedAt: string;
+  provider?: string;
+  providerInstance?: string;
+  providerErrors?: string[];
 }
