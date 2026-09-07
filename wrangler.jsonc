@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "deepsearch-public-api",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-06",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ALLOWED_ORIGIN": "https://camoosk.github.io",
+    "MAX_RESULTS": "10",
+    "MAX_PAGE_BYTES": "500000",
+    "FETCH_TIMEOUT_MS": "8000",
+    "USER_AGENT": "DeepSearchPublic/0.2 (+https://github.com/camoosk/deepsearch-public)"
+  },
+  "secrets": {
+    "required": ["BRAVE_SEARCH_API_KEY"]
+  },
+  "limits": {
+    "subrequests": 30,
+    "cpu_ms": 10
+  }
+}
