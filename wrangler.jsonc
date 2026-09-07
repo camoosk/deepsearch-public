@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "deepsearch-public",
-  "main": "src/worker.ts",
+  "main": "src/worker-v2.ts",
   "compatibility_date": "2026-09-06",
   "workers_dev": true,
   "observability": {
@@ -15,6 +15,6 @@
     "MAX_RESULTS": "10",
     "MAX_PAGE_BYTES": "150000",
     "FETCH_TIMEOUT_MS": "8000",
-    "USER_AGENT": "DeepSearchPublic/0.4 (+https://github.com/camoosk/deepsearch-public)"
+    "USER_AGENT": "DeepSearchPublic/0.5 (+https://github.com/camoosk/deepsearch-public)"
   }
 }
