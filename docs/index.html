@@ -19,10 +19,16 @@
       <h1>Search deeper.<br><span>Keep the evidence.</span></h1>
       <p>Privacy-aware research interface for discovering, correlating and verifying publicly available information.</p>
 
+      <div class="mode-switch" role="group" aria-label="Research mode">
+        <button id="webMode" class="mode active" type="button">Web research</button>
+        <button id="personMode" class="mode" type="button">Person research</button>
+      </div>
+
       <form id="searchForm" class="searchbox">
         <input id="query" maxlength="500" autocomplete="off" placeholder="What do you want to investigate?" aria-label="Search query" />
         <button type="submit">Search</button>
       </form>
+      <div id="personHint" class="mode-hint hidden">Person Research searches only public sources: biography, work, publications, organizations, news, official pages and public records. It does not bypass private accounts or seek passwords, private contact details, precise location, or leaked data.</div>
       <div class="examples">
         <button data-q="open source intelligence tools">OSINT tools</button>
         <button data-q="web privacy research">Web privacy</button>
@@ -49,7 +55,7 @@
     <section class="principles">
       <article><b>01</b><h3>Public by design</h3><p>Designed around information intentionally available on the public web.</p></article>
       <article><b>02</b><h3>Evidence first</h3><p>Results retain source URLs, domains and relevance signals instead of hiding provenance.</p></article>
-      <article><b>03</b><h3>Backend ready</h3><p>The static demo can connect to the DeepSearch API when a backend endpoint is deployed.</p></article>
+      <article><b>03</b><h3>Person research</h3><p>Builds a public-source evidence map across biography, career, organizations, publications and news.</p></article>
     </section>
   </main>
 
