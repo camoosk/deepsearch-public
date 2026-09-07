@@ -8,6 +8,7 @@ interface Env {
   BRAVE_SEARCH_API_KEY?: string;
   SEARCH_PROVIDER?: string;
   SEARXNG_URL?: string;
+  SEARXNG_FALLBACK_URLS?: string;
   ALLOWED_ORIGIN?: string;
   MAX_RESULTS?: string;
   MAX_PAGE_BYTES?: string;
@@ -19,6 +20,11 @@ const DEFAULT_LIMIT = 10;
 const MAX_QUERY_LENGTH = 500;
 const MAX_INSPECT = 3;
 const DEFAULT_SEARXNG_URL = "https://searx.tiekoetter.com";
+const DEFAULT_SEARXNG_FALLBACKS = [
+  "https://searxng.website",
+  "https://search.pereira.is",
+  "https://searxng.site"
+];
 
 function json(data: unknown, status = 200, origin?: string): Response {
   return new Response(JSON.stringify(data), {
@@ -69,8 +75,64 @@ function normalizedBaseUrl(raw: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function searxngInstances(env: Env): string[] {
+  const configured = (env.SEARXNG_FALLBACK_URLS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const candidates = [env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL, ...configured, ...DEFAULT_SEARXNG_FALLBACKS];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const normalized = normalizedBaseUrl(candidate);
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    } catch {
+      // Ignore invalid fallback entries; the primary URL is validated when used.
+    }
+  }
+  return result;
+}
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Math.min(Number(n), 0x10ffff)));
+}
+
+function stripHtml(value: string): string {
+  return decodeEntities(value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function parseSearxHtml(html: string, limit: number): SearchResult[] {
+  const results: SearchResult[] = [];
+  const articlePattern = /<article\b[^>]*class=["'][^"']*result[^"']*["'][^>]*>([\s\S]*?)<\/article>/gi;
+  let match: RegExpExecArray | null;
+  while (results.length < limit && (match = articlePattern.exec(html)) !== null) {
+    const article = match[1] ?? "";
+    const linkMatch = article.match(/<h3[^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h3>/i)
+      ?? article.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const url = decodeEntities(linkMatch[1] ?? "").trim();
+    const title = stripHtml(linkMatch[2] ?? "");
+    if (!url || !title || !/^https?:\/\//i.test(url)) continue;
+    const contentMatch = article.match(/<(?:p|div)\b[^>]*class=["'][^"']*(?:content|description|snippet)[^"']*["'][^>]*>([\s\S]*?)<\/(?:p|div)>/i);
+    results.push({ url, title, snippet: stripHtml(contentMatch?.[1] ?? ""), provider: "searxng" });
+  }
+  return results;
+}
+
 async function searxngSearch(query: string, baseUrl: string, limit: number, timeoutMs: number): Promise<SearchResult[]> {
-  const url = new URL(`${normalizedBaseUrl(baseUrl)}/search`);
+  const normalized = normalizedBaseUrl(baseUrl);
+  const url = new URL(`${normalized}/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
   url.searchParams.set("categories", "general");
@@ -79,29 +141,48 @@ async function searxngSearch(query: string, baseUrl: string, limit: number, time
   url.searchParams.set("pageno", "1");
 
   const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "user-agent": "DeepSearchPublic/0.3"
-    },
+    headers: { Accept: "application/json", "user-agent": "DeepSearchPublic/0.4" },
     signal: timeoutSignal(timeoutMs)
   });
-  if (!response.ok) throw new Error(`SearXNG search failed with HTTP ${response.status}`);
 
-  const body = (await response.json()) as {
-    results?: Array<{ url?: string; title?: string; content?: string; publishedDate?: string; score?: number }>;
-  };
-
-  return (body.results ?? []).slice(0, Math.min(limit, 10)).flatMap((item) => {
-    if (!item.url || !item.title) return [];
-    const result: SearchResult = {
-      url: item.url,
-      title: item.title,
-      snippet: item.content ?? "",
-      provider: "searxng"
+  if (response.ok) {
+    const body = (await response.json()) as {
+      results?: Array<{ url?: string; title?: string; content?: string; publishedDate?: string }>;
     };
-    if (item.publishedDate) result.publishedAt = item.publishedDate;
-    return [result];
-  });
+    return (body.results ?? []).slice(0, Math.min(limit, 10)).flatMap((item) => {
+      if (!item.url || !item.title) return [];
+      const result: SearchResult = {
+        url: item.url,
+        title: item.title,
+        snippet: item.content ?? "",
+        provider: "searxng"
+      };
+      if (item.publishedDate) result.publishedAt = item.publishedDate;
+      return [result];
+    });
+  }
+
+  // Many public instances disable JSON while leaving normal HTML search enabled.
+  // Retry once without the JSON-only format before declaring the instance unusable.
+  if (response.status === 403 || response.status === 406 || response.status === 415) {
+    const htmlUrl = new URL(`${normalized}/search`);
+    htmlUrl.searchParams.set("q", query);
+    htmlUrl.searchParams.set("categories", "general");
+    htmlUrl.searchParams.set("language", "en");
+    htmlUrl.searchParams.set("safesearch", "1");
+    htmlUrl.searchParams.set("pageno", "1");
+    const htmlResponse = await fetch(htmlUrl, {
+      headers: { Accept: "text/html,application/xhtml+xml", "user-agent": "DeepSearchPublic/0.4" },
+      signal: timeoutSignal(timeoutMs)
+    });
+    if (htmlResponse.ok) {
+      const html = (await htmlResponse.text()).slice(0, 400000);
+      const parsed = parseSearxHtml(html, Math.min(limit, 10));
+      if (parsed.length > 0) return parsed;
+    }
+  }
+
+  throw new Error(`HTTP ${response.status}`);
 }
 
 async function braveSearch(query: string, apiKey: string, limit: number, timeoutMs: number): Promise<SearchResult[]> {
@@ -109,28 +190,17 @@ async function braveSearch(query: string, apiKey: string, limit: number, timeout
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
   url.searchParams.set("q", query);
   url.searchParams.set("count", String(Math.min(limit, 10)));
-
   const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "X-Subscription-Token": apiKey
-    },
+    headers: { Accept: "application/json", "X-Subscription-Token": apiKey },
     signal: timeoutSignal(timeoutMs)
   });
   if (!response.ok) throw new Error(`Brave search failed with HTTP ${response.status}`);
-
   const body = (await response.json()) as {
     web?: { results?: Array<{ url?: string; title?: string; description?: string; age?: string }> };
   };
-
   return (body.web?.results ?? []).flatMap((item) => {
     if (!item.url || !item.title) return [];
-    const result: SearchResult = {
-      url: item.url,
-      title: item.title,
-      snippet: item.description ?? "",
-      provider: "brave"
-    };
+    const result: SearchResult = { url: item.url, title: item.title, snippet: item.description ?? "", provider: "brave" };
     if (item.age) result.publishedAt = item.age;
     return [result];
   });
@@ -181,12 +251,11 @@ async function fetchRobots(target: URL, env: Env): Promise<boolean> {
   const robotsUrl = new URL("/robots.txt", target.origin);
   try {
     const response = await fetch(robotsUrl, {
-      headers: { "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.3" },
+      headers: { "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.4" },
       signal: timeoutSignal(Math.min(Number(env.FETCH_TIMEOUT_MS ?? 8000), 5000))
     });
     if (!response.ok) return true;
-    const text = await response.text();
-    return robotsAllows(text.slice(0, 200000), target);
+    return robotsAllows((await response.text()).slice(0, 200000), target);
   } catch {
     return true;
   }
@@ -210,37 +279,21 @@ function decodeHtml(html: string): { title: string; description: string; text: s
   return { title, description, text };
 }
 
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Math.min(Number(n), 0x10ffff)));
-}
-
 async function inspectPublicPage(rawUrl: string, env: Env): Promise<{ fetched: boolean; title?: string; description?: string; text?: string; finalUrl?: string }> {
   const target = validatePublicUrl(rawUrl);
   if (!(await fetchRobots(target, env))) return { fetched: false };
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, Math.min(Number(env.FETCH_TIMEOUT_MS ?? 8000), 15000)));
   try {
     const response = await fetch(target, {
       method: "GET",
       redirect: "error",
-      headers: {
-        Accept: "text/html,application/xhtml+xml;q=0.9",
-        "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.3"
-      },
+      headers: { Accept: "text/html,application/xhtml+xml;q=0.9", "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.4" },
       signal: controller.signal
     });
     if (!response.ok) return { fetched: false };
     const type = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (!type.includes("text/html") && !type.includes("application/xhtml+xml")) return { fetched: false };
-
     const maxBytes = Math.max(10000, Math.min(Number(env.MAX_PAGE_BYTES ?? 150000), 500000));
     const reader = response.body?.getReader();
     if (!reader) return { fetched: false };
@@ -266,31 +319,51 @@ async function inspectPublicPage(rawUrl: string, env: Env): Promise<{ fetched: b
   }
 }
 
+async function searchSearxWithFallback(query: string, limit: number, timeoutMs: number, instances: string[]): Promise<{ results: SearchResult[]; instance?: string; errors: string[] }> {
+  const errors: string[] = [];
+  for (const instance of instances) {
+    try {
+      const results = await searxngSearch(query, instance, Math.min(limit, 5), timeoutMs);
+      if (results.length > 0) return { results, instance, errors };
+      errors.push(`${new URL(instance).hostname}: empty`);
+    } catch (error) {
+      errors.push(`${new URL(instance).hostname}: ${error instanceof Error ? error.message : "request failed"}`);
+    }
+  }
+  return { results: [], errors };
+}
+
 async function deepSearchWorker(query: string, limit: number, env: Env): Promise<SearchRun> {
   const startedAt = new Date().toISOString();
   const expandedQueries = expandQuery(query).slice(0, 4);
   const provider = (env.SEARCH_PROVIDER ?? "searxng").toLowerCase();
   const timeoutMs = Number(env.FETCH_TIMEOUT_MS ?? 8000);
-  const searxUrl = env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL;
   let raw: SearchResult[] = [];
+  let providerInstance: string | undefined;
+  const providerErrors: string[] = [];
 
   if (provider === "brave") {
-    const batches = await Promise.allSettled(
-      expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs))
-    );
-    for (const batch of batches) if (batch.status === "fulfilled") raw.push(...batch.value);
+    const batches = await Promise.allSettled(expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs)));
+    for (const batch of batches) {
+      if (batch.status === "fulfilled") raw.push(...batch.value);
+      else providerErrors.push(errorMessage(batch.reason));
+    }
   } else {
+    const instances = searxngInstances(env);
     const variants = expandedQueries.slice(0, 3);
-    const batches = await Promise.allSettled(
-      variants.map((variant) => searxngSearch(variant, searxUrl, Math.min(limit, 5), timeoutMs))
-    );
-    for (const batch of batches) if (batch.status === "fulfilled") raw.push(...batch.value);
+    for (const variant of variants) {
+      const batch = await searchSearxWithFallback(variant, limit, timeoutMs, instances);
+      raw.push(...batch.results);
+      providerInstance ??= batch.instance;
+      providerErrors.push(...batch.errors.slice(0, 3));
+    }
 
     if (provider === "auto" && raw.length === 0 && env.BRAVE_SEARCH_API_KEY) {
-      const fallback = await Promise.allSettled(
-        expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs))
-      );
-      for (const batch of fallback) if (batch.status === "fulfilled") raw.push(...batch.value);
+      const fallback = await Promise.allSettled(expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs)));
+      for (const batch of fallback) {
+        if (batch.status === "fulfilled") raw.push(...batch.value);
+        else providerErrors.push(errorMessage(batch.reason));
+      }
     }
   }
 
@@ -322,7 +395,10 @@ async function deepSearchWorker(query: string, limit: number, env: Env): Promise
     expandedQueries,
     results: evidence,
     startedAt,
-    finishedAt: new Date().toISOString()
+    finishedAt: new Date().toISOString(),
+    provider,
+    providerInstance,
+    providerErrors: providerErrors.length > 0 ? providerErrors.slice(0, 8) : undefined
   };
 }
 
@@ -349,7 +425,7 @@ export default {
           service: "deepsearch-public-api",
           runtime: "cloudflare-workers",
           provider: (env.SEARCH_PROVIDER ?? "searxng").toLowerCase(),
-          searxngConfigured: Boolean(env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL),
+          searxngInstances: searxngInstances(env),
           braveConfigured: Boolean(env.BRAVE_SEARCH_API_KEY)
         }, 200, corsOrigin);
       }
