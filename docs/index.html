@@ -28,7 +28,7 @@
         <input id="query" maxlength="500" autocomplete="off" placeholder="What do you want to investigate?" aria-label="Search query" />
         <button type="submit">Search</button>
       </form>
-      <div id="personHint" class="mode-hint hidden">Person Research searches only public sources: biography, work, publications, organizations, news, official pages and public records. It does not bypass private accounts or seek passwords, private contact details, precise location, or leaked data.</div>
+      <div id="personHint" class="mode-hint hidden">Deep Person Research searches only public sources: biography, work, education, publications, organizations, news, official pages, documents and public records. It recursively correlates public entities and verifies claims across sources. It does not bypass private accounts or seek passwords, private contact details, precise location, or leaked data.</div>
       <div class="examples">
         <button data-q="open source intelligence tools" type="button">OSINT tools</button>
         <button data-q="web privacy research" type="button">Web privacy</button>
@@ -55,11 +55,12 @@
     <section class="principles">
       <article><b>01</b><h3>Public by design</h3><p>Designed around information intentionally available on the public web.</p></article>
       <article><b>02</b><h3>Evidence first</h3><p>Results retain source URLs, domains and relevance signals instead of hiding provenance.</p></article>
-      <article><b>03</b><h3>Person research</h3><p>Builds a public-source evidence map across biography, career, organizations, publications and news.</p></article>
+      <article><b>03</b><h3>Deep person research</h3><p>Recursively discovers public entities, correlates sources and runs cross-source verification.</p></article>
     </section>
   </main>
 
   <footer>DeepSearch Public · Open source · MIT</footer>
+  <script src="./person-engine.js?v=20260908-1"></script>
   <script src="./app.js?v=20260908-4"></script>
 </body>
 </html>
