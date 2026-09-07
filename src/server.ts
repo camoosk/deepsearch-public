@@ -54,7 +54,7 @@ app.post("/api/inspect", async (request, reply) => {
 });
 
 app.setErrorHandler((error, _request, reply) => {
-  reply.code(500).send({ error: error.message });
+  reply.code(500).send({ error: error instanceof Error ? error.message : "Internal server error" });
 });
 
 await app.listen({ port: config.PORT, host: config.HOST });
