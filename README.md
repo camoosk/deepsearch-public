@@ -2,13 +2,18 @@
 
 Privacy-aware deep web search engine for discovering, correlating, and verifying publicly available information across multiple sources.
 
-> **Status:** v0.1 foundation
+> **Status:** v0.2 foundation + Cloudflare Workers runtime
 
 ## What it does
 
-DeepSearch Public is a modular public-web research engine. It expands a user's query into several deterministic variants, searches through a provider abstraction, canonicalizes and deduplicates results, ranks evidence, and can inspect public HTML pages while respecting `robots.txt`.
+DeepSearch Public is a modular public-web research engine. It expands a user's query into deterministic variants, searches through a provider abstraction, canonicalizes and deduplicates results, ranks evidence, and can inspect public HTML pages while respecting `robots.txt`.
 
-The project is intentionally provider-agnostic: the default provider is a local mock so the project runs without API credentials. A Brave Search provider is included for real public-web search.
+The project has two runtimes:
+
+- **Node/Fastify** for local development and traditional server hosting.
+- **Cloudflare Workers** for the lightweight production API and GitHub-connected deployment.
+
+The default local provider is a mock so the project runs without API credentials. The production Worker uses Brave Search through a server-side secret.
 
 ## Safety boundary
 
@@ -17,32 +22,32 @@ This project is designed for information that is publicly accessible and legitim
 ## Architecture
 
 ```text
-Query
-  │
-  ▼
-Query Expansion
-  │
-  ├── original query
-  ├── exact phrase
-  ├── normalized terms
-  └── research variants
-  │
-  ▼
-Search Provider
-  │
-  ▼
-Canonicalization + Deduplication
-  │
-  ▼
-Evidence Ranking
-  │
-  ▼
-SearchRun + Evidence Trail
-
-Optional page inspection
-  │
-  ▼
-robots.txt → HTML fetch → text extraction
+                         DeepSearch Public
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+             Node/Fastify             Cloudflare Worker
+              local runtime             production API
+                    │                       │
+                    └───────────┬───────────┘
+                                ▼
+                         Query Expansion
+                                │
+                                ▼
+                         Brave Search API
+                                │
+                                ▼
+                    Canonicalize + Deduplicate
+                                │
+                                ▼
+                         Evidence Ranking
+                                │
+                                ▼
+                         SearchRun / Report
+                                │
+                                ▼
+                   Optional public page inspection
+                         robots.txt → HTML
 ```
 
 ## API
@@ -83,7 +88,7 @@ robots.txt → HTML fetch → text extraction
 }
 ```
 
-The inspector only accepts HTTP(S), checks `robots.txt`, enforces response-size and timeout limits, and extracts readable HTML text.
+The public-page inspector only accepts HTTP(S), rejects obvious local/private hosts and credential-bearing URLs, checks `robots.txt`, enforces response-size and timeout limits, and extracts readable HTML text.
 
 ## Run locally
 
@@ -115,23 +120,37 @@ Tests:
 npm test
 ```
 
-## Deploy the API
+## Cloudflare Workers deployment
 
-GitHub Pages hosts the static frontend only. The repository includes a `render.yaml` Blueprint for deploying the Node/Fastify API as a separate web service.
+The repository includes `wrangler.jsonc` and `src/worker.ts` for a Cloudflare Workers deployment. The Worker is deliberately lightweight because the Workers Free plan has a 10 ms CPU limit and 50 external subrequests per invocation.
 
-The deployment expects a server-side `BRAVE_SEARCH_API_KEY`; the key must never be placed in `docs/`, browser JavaScript, or a public repository file.
+Set the Brave key as a **Cloudflare Worker Secret** named `BRAVE_SEARCH_API_KEY`. Never put the key in `wrangler.jsonc`, browser JavaScript, or a public repository file.
 
-After deployment, the frontend can use the API by opening the Pages URL with an `api` query parameter, for example:
+Recommended deployment path:
+
+1. Create a Cloudflare account and open **Workers & Pages**.
+2. Choose **Create application → Import an existing Git repository**.
+3. Select `camoosk/deepsearch-public`.
+4. Use the repository's `wrangler.jsonc` configuration and Worker name `deepsearch-public-api`.
+5. Add the `BRAVE_SEARCH_API_KEY` secret in the Worker settings.
+6. Deploy and verify `GET /health`.
+7. Connect the GitHub repository through **Settings → Builds** so future pushes deploy automatically.
+
+Cloudflare's Workers Free plan currently includes 100,000 Worker requests per day. The production Worker keeps external calls bounded and avoids storing request-scoped state globally.
+
+## GitHub Pages frontend
+
+The static frontend lives in `docs/` and is designed for GitHub Pages and mobile browsers. It supports browser-demo discovery and live API mode through the `api` query parameter:
 
 ```text
-https://camoosk.github.io/deepsearch-public/?api=https://YOUR-API-HOST
+https://camoosk.github.io/deepsearch-public/?api=https://YOUR-WORKER.workers.dev
 ```
 
-The browser UI falls back to its safe demo mode if the API is unavailable.
+The browser UI falls back to safe demo mode if the API is unavailable.
 
-## Web UI
+## Alternative Node deployment
 
-The static frontend lives in `docs/` and is designed for GitHub Pages and mobile browsers. It currently supports browser-demo discovery and live API mode through the `api` query parameter.
+`render.yaml` is retained for traditional Node/Fastify hosting. It is not required for the Cloudflare Workers deployment.
 
 ## Roadmap
 
@@ -144,7 +163,8 @@ The static frontend lives in `docs/` and is designed for GitHub Pages and mobile
 - [x] Basic automated tests
 - [x] Markdown report generation
 - [x] Static Web UI / GitHub Pages demo
-- [x] Render backend deployment blueprint
+- [x] Node/Fastify backend
+- [x] Cloudflare Workers runtime
 - [ ] Multi-provider federation
 - [ ] Persistent research runs
 - [ ] Source credibility profiles
