@@ -13,8 +13,5 @@
     "MAX_PAGE_BYTES": "500000",
     "FETCH_TIMEOUT_MS": "8000",
     "USER_AGENT": "DeepSearchPublic/0.2 (+https://github.com/camoosk/deepsearch-public)"
-  },
-  "secrets": {
-    "required": ["BRAVE_SEARCH_API_KEY"]
   }
 }
