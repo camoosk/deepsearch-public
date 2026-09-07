@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
+import { fetchPublicPage } from "../fetcher.js";
 import { deduplicate, evidenceId } from "./dedup.js";
 import { expandQuery } from "./query-expander.js";
 import { scoreResult } from "./ranker.js";
@@ -41,6 +42,16 @@ export async function deepSearch(query: string, limit = config.MAX_RESULTS): Pro
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+
+  // Inspect a small top slice. This makes the run multi-stage without crawling the web broadly.
+  const inspectTargets = unique.slice(0, Math.min(5, unique.length));
+  await Promise.allSettled(inspectTargets.map(async (evidence) => {
+    const page = await fetchPublicPage(evidence.url);
+    if (!page) return;
+    evidence.fetched = true;
+    if (page.title) evidence.title = page.title;
+    if (page.description) evidence.snippet = page.description;
+  }));
 
   return {
     id: randomUUID(),
