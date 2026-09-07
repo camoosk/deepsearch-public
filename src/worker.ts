@@ -5,7 +5,9 @@ import type { Evidence, SearchResult, SearchRun } from "./types.js";
 import { buildReport } from "./report.js";
 
 interface Env {
-  BRAVE_SEARCH_API_KEY: string;
+  BRAVE_SEARCH_API_KEY?: string;
+  SEARCH_PROVIDER?: string;
+  SEARXNG_URL?: string;
   ALLOWED_ORIGIN?: string;
   MAX_RESULTS?: string;
   MAX_PAGE_BYTES?: string;
@@ -16,6 +18,7 @@ interface Env {
 const DEFAULT_LIMIT = 10;
 const MAX_QUERY_LENGTH = 500;
 const MAX_INSPECT = 3;
+const DEFAULT_SEARXNG_URL = "https://searx.tiekoetter.com";
 
 function json(data: unknown, status = 200, origin?: string): Response {
   return new Response(JSON.stringify(data), {
@@ -54,6 +57,51 @@ function clampLimit(value: unknown, fallback: number): number {
 
 function timeoutSignal(ms: number): AbortSignal {
   return AbortSignal.timeout(Math.max(1000, Math.min(ms, 15000)));
+}
+
+function normalizedBaseUrl(raw: string): string {
+  const url = new URL(raw || DEFAULT_SEARXNG_URL);
+  if (url.protocol !== "https:") throw new Error("SEARXNG_URL must use HTTPS");
+  if (url.username || url.password) throw new Error("SEARXNG_URL must not contain credentials");
+  url.pathname = url.pathname.replace(/\/$/, "");
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+async function searxngSearch(query: string, baseUrl: string, limit: number, timeoutMs: number): Promise<SearchResult[]> {
+  const url = new URL(`${normalizedBaseUrl(baseUrl)}/search`);
+  url.searchParams.set("q", query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("categories", "general");
+  url.searchParams.set("language", "en");
+  url.searchParams.set("safesearch", "1");
+  url.searchParams.set("pageno", "1");
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "user-agent": "DeepSearchPublic/0.3"
+    },
+    signal: timeoutSignal(timeoutMs)
+  });
+  if (!response.ok) throw new Error(`SearXNG search failed with HTTP ${response.status}`);
+
+  const body = (await response.json()) as {
+    results?: Array<{ url?: string; title?: string; content?: string; publishedDate?: string; score?: number }>;
+  };
+
+  return (body.results ?? []).slice(0, Math.min(limit, 10)).flatMap((item) => {
+    if (!item.url || !item.title) return [];
+    const result: SearchResult = {
+      url: item.url,
+      title: item.title,
+      snippet: item.content ?? "",
+      provider: "searxng"
+    };
+    if (item.publishedDate) result.publishedAt = item.publishedDate;
+    return [result];
+  });
 }
 
 async function braveSearch(query: string, apiKey: string, limit: number, timeoutMs: number): Promise<SearchResult[]> {
@@ -112,7 +160,6 @@ function validatePublicUrl(raw: string): URL {
 function robotsAllows(text: string, target: URL): boolean {
   const lines = text.split(/\r?\n/);
   let applies = false;
-  let hasRules = false;
   const path = target.pathname || "/";
   for (const raw of lines) {
     const line = raw.split("#", 1)[0]?.trim() ?? "";
@@ -123,14 +170,9 @@ function robotsAllows(text: string, target: URL): boolean {
     const value = line.slice(colon + 1).trim();
     if (field === "user-agent") {
       applies = value === "*" || value.toLowerCase().includes("deepsearchpublic");
-      hasRules = false;
       continue;
     }
-    if (applies && field === "disallow") {
-      hasRules = true;
-      if (value && path.startsWith(value)) return false;
-    }
-    if (applies && field === "allow" && value && path.startsWith(value)) hasRules = true;
+    if (applies && field === "disallow" && value && path.startsWith(value)) return false;
   }
   return true;
 }
@@ -139,7 +181,7 @@ async function fetchRobots(target: URL, env: Env): Promise<boolean> {
   const robotsUrl = new URL("/robots.txt", target.origin);
   try {
     const response = await fetch(robotsUrl, {
-      headers: { "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.2" },
+      headers: { "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.3" },
       signal: timeoutSignal(Math.min(Number(env.FETCH_TIMEOUT_MS ?? 8000), 5000))
     });
     if (!response.ok) return true;
@@ -191,7 +233,7 @@ async function inspectPublicPage(rawUrl: string, env: Env): Promise<{ fetched: b
       redirect: "error",
       headers: {
         Accept: "text/html,application/xhtml+xml;q=0.9",
-        "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.2"
+        "user-agent": env.USER_AGENT ?? "DeepSearchPublic/0.3"
       },
       signal: controller.signal
     });
@@ -199,7 +241,7 @@ async function inspectPublicPage(rawUrl: string, env: Env): Promise<{ fetched: b
     const type = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (!type.includes("text/html") && !type.includes("application/xhtml+xml")) return { fetched: false };
 
-    const maxBytes = Math.max(10000, Math.min(Number(env.MAX_PAGE_BYTES ?? 500000), 1000000));
+    const maxBytes = Math.max(10000, Math.min(Number(env.MAX_PAGE_BYTES ?? 150000), 500000));
     const reader = response.body?.getReader();
     if (!reader) return { fetched: false };
     const chunks: Uint8Array[] = [];
@@ -227,11 +269,31 @@ async function inspectPublicPage(rawUrl: string, env: Env): Promise<{ fetched: b
 async function deepSearchWorker(query: string, limit: number, env: Env): Promise<SearchRun> {
   const startedAt = new Date().toISOString();
   const expandedQueries = expandQuery(query).slice(0, 4);
-  const batches = await Promise.allSettled(
-    expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY, Math.min(limit, 5), Number(env.FETCH_TIMEOUT_MS ?? 8000)))
-  );
-  const raw: SearchResult[] = [];
-  for (const batch of batches) if (batch.status === "fulfilled") raw.push(...batch.value);
+  const provider = (env.SEARCH_PROVIDER ?? "searxng").toLowerCase();
+  const timeoutMs = Number(env.FETCH_TIMEOUT_MS ?? 8000);
+  const searxUrl = env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL;
+  let raw: SearchResult[] = [];
+
+  if (provider === "brave") {
+    const batches = await Promise.allSettled(
+      expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs))
+    );
+    for (const batch of batches) if (batch.status === "fulfilled") raw.push(...batch.value);
+  } else {
+    const variants = expandedQueries.slice(0, 3);
+    const batches = await Promise.allSettled(
+      variants.map((variant) => searxngSearch(variant, searxUrl, Math.min(limit, 5), timeoutMs))
+    );
+    for (const batch of batches) if (batch.status === "fulfilled") raw.push(...batch.value);
+
+    if (provider === "auto" && raw.length === 0 && env.BRAVE_SEARCH_API_KEY) {
+      const fallback = await Promise.allSettled(
+        expandedQueries.map((variant) => braveSearch(variant, env.BRAVE_SEARCH_API_KEY ?? "", Math.min(limit, 5), timeoutMs))
+      );
+      for (const batch of fallback) if (batch.status === "fulfilled") raw.push(...batch.value);
+    }
+  }
+
   const unique = deduplicate(raw);
   const ranked = unique
     .map((result) => ({ result, score: scoreResult(result, query) }))
@@ -282,7 +344,14 @@ export default {
 
     try {
       if (request.method === "GET" && url.pathname === "/health") {
-        return json({ ok: true, service: "deepsearch-public-api", runtime: "cloudflare-workers" }, 200, corsOrigin);
+        return json({
+          ok: true,
+          service: "deepsearch-public-api",
+          runtime: "cloudflare-workers",
+          provider: (env.SEARCH_PROVIDER ?? "searxng").toLowerCase(),
+          searxngConfigured: Boolean(env.SEARXNG_URL ?? DEFAULT_SEARXNG_URL),
+          braveConfigured: Boolean(env.BRAVE_SEARCH_API_KEY)
+        }, 200, corsOrigin);
       }
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, corsOrigin);
 
@@ -312,7 +381,7 @@ export default {
       return json({ error: "Not found" }, 404, corsOrigin);
     } catch (error) {
       const message = errorMessage(error);
-      const status = /required|not allowed|only http|private|credential/i.test(message) ? 422 : 502;
+      const status = /required|not allowed|only https|only http|private|credential/i.test(message) ? 422 : 502;
       return json({ error: message }, status, corsOrigin);
     }
   }
