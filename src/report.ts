@@ -30,3 +30,5 @@ export function toMarkdown(run: SearchRun): string {
   ];
   return lines.join("\n");
 }
+
+export const buildReport = toMarkdown;
