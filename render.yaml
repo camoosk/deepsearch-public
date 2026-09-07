@@ -3,10 +3,10 @@ services:
     name: deepsearch-public-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -16,6 +16,10 @@ services:
         sync: false
       - key: MAX_RESULTS
         value: "10"
+      - key: RATE_LIMIT_MAX
+        value: "30"
+      - key: RATE_LIMIT_WINDOW
+        value: "1 minute"
       - key: FETCH_TIMEOUT_MS
         value: "10000"
       - key: MAX_PAGE_BYTES
