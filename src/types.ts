@@ -1,4 +1,4 @@
-export type SearchProviderName = "mock" | "brave";
+export type SearchProviderName = "mock" | "brave" | "searxng";
 
 export interface SearchQuery {
   query: string;
