@@ -3,7 +3,8 @@ import { z } from "zod";
 const schema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default("0.0.0.0"),
-  SEARCH_PROVIDER: z.enum(["mock", "brave"]).default("mock"),
+  SEARCH_PROVIDER: z.enum(["mock", "searxng", "brave", "auto"]).default("mock"),
+  SEARXNG_URL: z.string().url().default("https://searx.tiekoetter.com"),
   BRAVE_SEARCH_API_KEY: z.string().default(""),
   MAX_RESULTS: z.coerce.number().int().min(1).max(50).default(10),
   FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
