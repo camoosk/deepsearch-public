@@ -10,14 +10,12 @@ export class MockProvider implements SearchProvider {
 
   async search(request: SearchQuery): Promise<SearchResult[]> {
     const q = encodeURIComponent(request.query);
-    return [
-      {
-        url: `https://example.com/search?q=${q}`,
-        title: `Mock result for ${request.query}`,
-        snippet: "Demo result. Configure a real search provider to search the public web.",
-        provider: this.name
-      }
-    ].slice(0, request.limit ?? 10);
+    return [{
+      url: `https://example.com/search?q=${q}`,
+      title: `Mock result for ${request.query}`,
+      snippet: "Demo result. Configure a real search provider to search the public web.",
+      provider: this.name
+    }].slice(0, request.limit ?? 10);
   }
 }
 
@@ -36,7 +34,8 @@ export class BraveProvider implements SearchProvider {
       headers: {
         Accept: "application/json",
         "X-Subscription-Token": this.apiKey
-      }
+      },
+      signal: AbortSignal.timeout(10000)
     });
     if (!response.ok) throw new Error(`Brave search failed with HTTP ${response.status}`);
 
@@ -45,13 +44,14 @@ export class BraveProvider implements SearchProvider {
     };
     return (body.web?.results ?? []).flatMap((item) => {
       if (!item.url || !item.title) return [];
-      return [{
+      const result: SearchResult = {
         url: item.url,
         title: item.title,
         snippet: item.description ?? "",
-        provider: this.name,
-        publishedAt: item.age
-      }];
+        provider: this.name
+      };
+      if (item.age) result.publishedAt = item.age;
+      return [result];
     });
   }
 }
