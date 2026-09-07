@@ -19,6 +19,48 @@ export class MockProvider implements SearchProvider {
   }
 }
 
+export class SearXNGProvider implements SearchProvider {
+  readonly name = "searxng" as const;
+  constructor(private readonly baseUrl: string) {}
+
+  async search(request: SearchQuery): Promise<SearchResult[]> {
+    const base = new URL(this.baseUrl);
+    if (base.protocol !== "https:") throw new Error("SEARXNG_URL must use HTTPS");
+    base.pathname = base.pathname.replace(/\/$/, "");
+    base.search = "";
+    base.hash = "";
+
+    const url = new URL(`${base.toString().replace(/\/$/, "")}/search`);
+    url.searchParams.set("q", request.query);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("categories", "general");
+    url.searchParams.set("language", "en");
+    url.searchParams.set("safesearch", "1");
+    url.searchParams.set("pageno", "1");
+
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "user-agent": "DeepSearchPublic/0.3" },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) throw new Error(`SearXNG search failed with HTTP ${response.status}`);
+
+    const body = (await response.json()) as {
+      results?: Array<{ url?: string; title?: string; content?: string; publishedDate?: string }>;
+    };
+    return (body.results ?? []).slice(0, Math.min(request.limit ?? 10, 20)).flatMap((item) => {
+      if (!item.url || !item.title) return [];
+      const result: SearchResult = {
+        url: item.url,
+        title: item.title,
+        snippet: item.content ?? "",
+        provider: this.name
+      };
+      if (item.publishedDate) result.publishedAt = item.publishedDate;
+      return [result];
+    });
+  }
+}
+
 export class BraveProvider implements SearchProvider {
   readonly name = "brave" as const;
   constructor(private readonly apiKey: string) {}
