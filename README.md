@@ -72,6 +72,17 @@ robots.txt → HTML fetch → text extraction
 }
 ```
 
+### Markdown report
+
+`POST /api/report`
+
+```json
+{
+  "query": "volcanic ash Jakarta",
+  "limit": 10
+}
+```
+
 The inspector only accepts HTTP(S), checks `robots.txt`, enforces response-size and timeout limits, and extracts readable HTML text.
 
 ## Run locally
@@ -104,6 +115,24 @@ Tests:
 npm test
 ```
 
+## Deploy the API
+
+GitHub Pages hosts the static frontend only. The repository includes a `render.yaml` Blueprint for deploying the Node/Fastify API as a separate web service.
+
+The deployment expects a server-side `BRAVE_SEARCH_API_KEY`; the key must never be placed in `docs/`, browser JavaScript, or a public repository file.
+
+After deployment, the frontend can use the API by opening the Pages URL with an `api` query parameter, for example:
+
+```text
+https://camoosk.github.io/deepsearch-public/?api=https://YOUR-API-HOST
+```
+
+The browser UI falls back to its safe demo mode if the API is unavailable.
+
+## Web UI
+
+The static frontend lives in `docs/` and is designed for GitHub Pages and mobile browsers. It currently supports browser-demo discovery and live API mode through the `api` query parameter.
+
 ## Roadmap
 
 - [x] Provider abstraction
@@ -113,14 +142,15 @@ npm test
 - [x] Robots-aware public page inspection
 - [x] HTTP API
 - [x] Basic automated tests
+- [x] Markdown report generation
+- [x] Static Web UI / GitHub Pages demo
+- [x] Render backend deployment blueprint
 - [ ] Multi-provider federation
 - [ ] Persistent research runs
 - [ ] Source credibility profiles
 - [ ] Claim/evidence graph
 - [ ] Cross-source entity correlation with conservative matching
-- [ ] Report generation
 - [ ] Optional LLM-assisted synthesis with explicit citations
-- [ ] Web UI
 
 ## License
 
