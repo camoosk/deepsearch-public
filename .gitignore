@@ -3,6 +3,10 @@ node_modules/
 .npm/
 .pnpm-store/
 
+# Cloudflare
+.wrangler/
+.dev.vars
+
 # Build
 build/
 dist/
