@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import * as cheerio from "cheerio";
 import robotsParser from "robots-parser";
 import { config } from "./config.js";
@@ -5,8 +7,37 @@ import type { PageDocument } from "./types.js";
 
 const robotsCache = new Map<string, ReturnType<typeof robotsParser>>();
 
-function originOf(url: string): string {
-  return new URL(url).origin;
+function ipv4Private(address: string): boolean {
+  const octets = address.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n))) return true;
+  const [a, b] = octets;
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+}
+
+function ipv6Private(address: string): boolean {
+  const normalized = address.toLowerCase();
+  return normalized === "::" || normalized === "::1" ||
+    normalized.startsWith("fc") || normalized.startsWith("fd") ||
+    normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") || normalized.startsWith("feb") ||
+    normalized.startsWith("::ffff:10.") || normalized.startsWith("::ffff:192.168.") ||
+    normalized.startsWith("::ffff:127.");
+}
+
+async function isPublicHost(hostname: string): Promise<boolean> {
+  const lower = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (lower === "localhost" || lower.endsWith(".local") || lower.endsWith(".internal")) return false;
+  const literalType = isIP(lower);
+  if (literalType === 4) return !ipv4Private(lower);
+  if (literalType === 6) return !ipv6Private(lower);
+  try {
+    const addresses = await lookup(lower, { all: true, verbatim: true });
+    return addresses.length > 0 && addresses.every(({ address }) => isIP(address) === 4 ? !ipv4Private(address) : !ipv6Private(address));
+  } catch {
+    return false;
+  }
 }
 
 async function allowedByRobots(url: string): Promise<boolean> {
@@ -17,7 +48,8 @@ async function allowedByRobots(url: string): Promise<boolean> {
     try {
       const response = await fetch(robotsUrl, {
         headers: { "User-Agent": config.USER_AGENT },
-        signal: AbortSignal.timeout(config.FETCH_TIMEOUT_MS)
+        signal: AbortSignal.timeout(config.FETCH_TIMEOUT_MS),
+        redirect: "error"
       });
       const text = response.ok ? await response.text() : "";
       robots = robotsParser(robotsUrl, text);
@@ -33,10 +65,11 @@ export async function fetchPublicPage(url: string): Promise<PageDocument | null>
   let parsed: URL;
   try { parsed = new URL(url); } catch { return null; }
   if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  if (!(await isPublicHost(parsed.hostname))) return null;
   if (!(await allowedByRobots(url))) return null;
 
   const response = await fetch(url, {
-    redirect: "follow",
+    redirect: "error",
     headers: {
       "User-Agent": config.USER_AGENT,
       Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.8"
