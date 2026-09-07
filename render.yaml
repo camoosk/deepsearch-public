@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: deepsearch-public-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SEARCH_PROVIDER
+        value: brave
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: MAX_RESULTS
+        value: "10"
+      - key: FETCH_TIMEOUT_MS
+        value: "10000"
+      - key: MAX_PAGE_BYTES
+        value: "2000000"
+      - key: USER_AGENT
+        value: "DeepSearchPublic/0.1 (+https://github.com/camoosk/deepsearch-public)"
