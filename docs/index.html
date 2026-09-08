@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#08111f" />
   <title>DeepSearch Public</title>
-  <link rel="stylesheet" href="./styles.css?v=20260908-2" />
+  <link rel="stylesheet" href="./styles.css?v=20260908-5" />
 </head>
 <body>
   <header class="topbar">
@@ -17,7 +17,7 @@
     <section class="hero">
       <div class="eyebrow">PUBLIC WEB RESEARCH</div>
       <h1>Search deeper.<br><span>Keep the evidence.</span></h1>
-      <p>Privacy-aware research interface for discovering, correlating and verifying publicly available information.</p>
+      <p>Research publicly available information, follow useful sources, and keep the trail back to the original page.</p>
 
       <div class="mode-switch" role="group" aria-label="Research mode">
         <button id="webMode" class="mode active" type="button">Web research</button>
@@ -28,7 +28,7 @@
         <input id="query" maxlength="500" autocomplete="off" placeholder="What do you want to investigate?" aria-label="Search query" />
         <button type="submit">Search</button>
       </form>
-      <div id="personHint" class="mode-hint hidden">Deep Person Research searches only public sources: biography, work, education, publications, organizations, news, official pages, documents and public records. It recursively correlates public entities and verifies claims across sources. It does not bypass private accounts or seek passwords, private contact details, precise location, or leaked data.</div>
+      <div id="personHint" class="mode-hint hidden">Person research uses public sources such as biography, work, education, organizations, news, official pages, documents and public records. It is designed to correlate public information, not to access private accounts or obtain private data.</div>
       <div class="examples">
         <button data-q="open source intelligence tools" type="button">OSINT tools</button>
         <button data-q="web privacy research" type="button">Web privacy</button>
@@ -47,20 +47,38 @@
           <div><div class="panel-title">Evidence</div><h2 id="resultTitle">Results</h2></div>
           <div id="resultCount" class="count"></div>
         </div>
+
+        <div id="researchStatus" class="research-status hidden" aria-live="polite">
+          <div class="status-row">
+            <span class="activity-dot"></span>
+            <div class="status-copy">
+              <strong id="statusTitle">Researching public sources</strong>
+              <span id="statusDetail">Preparing the search...</span>
+            </div>
+            <span id="statusElapsed" class="elapsed">0:00</span>
+          </div>
+          <div class="progress-track"><span id="statusProgress"></span></div>
+          <div class="stage-row">
+            <span id="stage1" class="stage active">Discovery</span>
+            <span id="stage2" class="stage">Correlation</span>
+            <span id="stage3" class="stage">Verification</span>
+          </div>
+        </div>
+
         <div id="notice" class="notice"></div>
         <div id="results" class="results"></div>
       </section>
     </section>
 
     <section class="principles">
-      <article><b>01</b><h3>Public by design</h3><p>Designed around information intentionally available on the public web.</p></article>
-      <article><b>02</b><h3>Evidence first</h3><p>Results retain source URLs, domains and relevance signals instead of hiding provenance.</p></article>
-      <article><b>03</b><h3>Deep person research</h3><p>Recursively discovers public entities, correlates sources and runs cross-source verification.</p></article>
+      <article><b>01</b><h3>Public by design</h3><p>Built around information intentionally available on the public web.</p></article>
+      <article><b>02</b><h3>Evidence first</h3><p>Source URLs and domains remain visible so important claims can be checked.</p></article>
+      <article><b>03</b><h3>Research, not verdicts</h3><p>Public-source findings are clues and evidence to verify, not automatic conclusions about a person.</p></article>
     </section>
   </main>
 
   <footer>DeepSearch Public · Open source · MIT</footer>
-  <script src="./person-engine.js?v=20260908-1"></script>
-  <script src="./app.js?v=20260908-4"></script>
+  <script src="./person-engine.js?v=20260908-2"></script>
+  <script src="./app.js?v=20260908-5"></script>
 </body>
 </html>
